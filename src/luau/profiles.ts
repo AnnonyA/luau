@@ -35,7 +35,7 @@ export function getProfile(version: number): BytecodeProfile | null {
 }
 
 export function isDecodable(status: SupportStatus): boolean {
-  return status !== "UNSUPPORTED";
+  return status !== "UNSUPPORTED" && status !== "EXPERIMENTAL";
 }
 
 export const LBC_BYTECODE_MIN = 3;
