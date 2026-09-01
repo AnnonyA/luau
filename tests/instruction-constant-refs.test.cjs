@@ -105,6 +105,12 @@ for (const [name, opcode] of [
     assert.equal(result.module, null);
     assert.match(result.diagnostics.map((d) => d.message).join('\n'), new RegExp(`${name}.*constant.*1.*out of range`, 'i'));
   });
+
+  test(`decoder accepts ${name} C constant index inside the proto constant table`, () => {
+    const result = decodeBytes(moduleWithInstruction([abcWord(opcode, 0, 0, 0)]));
+    assert.equal(result.ok, true, result.diagnostics.map((d) => d.message).join('\n'));
+    assert.notEqual(result.module, null);
+  });
 }
 
 for (const [name, opcode] of [
@@ -116,5 +122,11 @@ for (const [name, opcode] of [
     assert.equal(result.ok, false);
     assert.equal(result.module, null);
     assert.match(result.diagnostics.map((d) => d.message).join('\n'), new RegExp(`${name}.*constant.*1.*out of range`, 'i'));
+  });
+
+  test(`decoder accepts ${name} B constant index inside the proto constant table`, () => {
+    const result = decodeBytes(moduleWithInstruction([abcWord(opcode, 0, 0, 0)], 5));
+    assert.equal(result.ok, true, result.diagnostics.map((d) => d.message).join('\n'));
+    assert.notEqual(result.module, null);
   });
 }
