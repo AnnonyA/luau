@@ -52,3 +52,37 @@ test("decoder fails closed when an instruction is missing its AUX word", () => {
   assert.equal(result.module, null);
   assert.match(result.diagnostics.map((d) => d.message).join("\n"), /AUX word/);
 });
+
+function minimalProto(childProtoIds = []) {
+  return [
+    1, 0, 0, 0,
+    0,
+    ...varUint(0),
+    ...varUint(0),
+    ...varUint(0),
+    ...varUint(childProtoIds.length),
+    ...childProtoIds.flatMap((id) => varUint(id)),
+    ...varUint(0),
+    ...varUint(0),
+    0,
+    ...varUint(0),
+    ...varUint(0),
+  ];
+}
+
+function moduleWithChildProtoIds(childProtoIds) {
+  return Uint8Array.from([
+    4, 1,
+    ...varUint(0),
+    ...varUint(1),
+    ...minimalProto(childProtoIds),
+    ...varUint(0),
+  ]);
+}
+
+test("decoder rejects child proto ids outside the module proto table", () => {
+  const result = decodeBytes(moduleWithChildProtoIds([1]));
+  assert.equal(result.ok, false);
+  assert.equal(result.module, null);
+  assert.match(result.diagnostics.map((d) => d.message).join("\n"), /child proto id 1.*out of range/i);
+});
