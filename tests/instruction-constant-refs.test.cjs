@@ -48,6 +48,12 @@ for (const [name, words] of [
   ['LOADK', [adWord(5, 1)]],
   ['DUPTABLE', [adWord(54, 1)]],
   ['LOADKX', [66, 1]],
+  ['GETGLOBAL', [7, 1]],
+  ['SETGLOBAL', [8, 1]],
+  ['GETTABLEKS', [15, 1]],
+  ['SETTABLEKS', [16, 1]],
+  ['NAMECALL', [20, 1]],
+  ['FASTCALL2K', [75, 1]],
 ]) {
   test(`decoder rejects ${name} constant index outside the proto constant table`, () => {
     const result = decodeBytes(moduleWithInstruction(words));
