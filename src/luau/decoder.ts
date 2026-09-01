@@ -170,6 +170,10 @@ export function decodeBytes(bytes: Uint8Array, limits: DecodeLimits = DEFAULT_LI
       }
     }
 
+    if (!validateProtoGraph(protos, limits.maxProtoDepth, push)) {
+      return { module: null, diagnostics, ok: false };
+    }
+
     const consumedBytes = r.pos;
     if (consumedBytes !== bytes.length) {
       push(
@@ -201,6 +205,71 @@ export function decodeBytes(bytes: Uint8Array, limits: DecodeLimits = DEFAULT_LI
     }
     return { module: null, diagnostics, ok: false };
   }
+}
+
+function validateProtoGraph(
+  protos: DecodedProto[],
+  maxDepth: number,
+  push: (severity: Diagnostic["severity"], stage: string, message: string, extra?: Partial<Diagnostic>) => void,
+): boolean {
+  const state = new Uint8Array(protos.length);
+  const longestDepth = new Uint32Array(protos.length);
+
+  type Frame = { protoId: number; nextChild: number; maxChildDepth: number };
+
+  for (let start = 0; start < protos.length; start++) {
+    if (state[start] === 2) continue;
+
+    const stack: Frame[] = [{ protoId: start, nextChild: 0, maxChildDepth: 0 }];
+    state[start] = 1;
+
+    while (stack.length > 0) {
+      const frame = stack[stack.length - 1];
+      const children = protos[frame.protoId].childProtoIds;
+
+      if (frame.nextChild < children.length) {
+        const childProtoId = children[frame.nextChild++];
+        if (state[childProtoId] === 1) {
+          push(
+            "error",
+            "format",
+            `proto graph cycle detected from proto ${frame.protoId} to proto ${childProtoId}`,
+            { protoId: frame.protoId },
+          );
+          return false;
+        }
+        if (state[childProtoId] === 2) {
+          frame.maxChildDepth = Math.max(frame.maxChildDepth, longestDepth[childProtoId]);
+          continue;
+        }
+
+        state[childProtoId] = 1;
+        stack.push({ protoId: childProtoId, nextChild: 0, maxChildDepth: 0 });
+        continue;
+      }
+
+      const depth = frame.maxChildDepth + 1;
+      if (depth > maxDepth) {
+        push(
+          "error",
+          "format",
+          `proto depth ${depth} exceeds configured limit ${maxDepth} at proto ${frame.protoId}`,
+          { protoId: frame.protoId },
+        );
+        return false;
+      }
+
+      longestDepth[frame.protoId] = depth;
+      state[frame.protoId] = 2;
+      stack.pop();
+      if (stack.length > 0) {
+        const parent = stack[stack.length - 1];
+        parent.maxChildDepth = Math.max(parent.maxChildDepth, depth);
+      }
+    }
+  }
+
+  return true;
 }
 
 function decodeProto(
