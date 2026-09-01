@@ -40,4 +40,4 @@ export function isDecodable(status: SupportStatus): boolean {
 }
 
 export const LBC_BYTECODE_MIN = 3;
-export const LBC_BYTECODE_MAX = 9;
+export const LBC_BYTECODE_MAX = 14;
