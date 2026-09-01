@@ -25,6 +25,7 @@ const RAW_PROFILES: BytecodeProfile[] = [
   { version: 11, status: "EXPERIMENTAL", summary: "Adds CALLFB, CMPPROTO and feedback vector description.", typesVersionRange: null, evidence: "Bytecode.h version history." },
   { version: 12, status: "EXPERIMENTAL", summary: "Adds per-proto byte size prefix and serialized cost function.", typesVersionRange: null, evidence: "Bytecode.h version history." },
   { version: 13, status: "EXPERIMENTAL", summary: "Adds double-precision vector constants.", typesVersionRange: null, evidence: "Bytecode.h version history." },
+  { version: 14, status: "UNSUPPORTED", summary: "Adds FASTPCALL and is currently supported upstream, but the complete v12-v14 serialized layout and semantics are not implemented here; fail closed until verified.", typesVersionRange: [1, 3], evidence: "Bytecode.h: 'Version 14: Adds FASTPCALL. Currently supported.'" },
   { version: 100, status: "UNSUPPORTED", summary: "WIP version reserved for in-progress NEWCLASS work.", typesVersionRange: null, evidence: "Bytecode.h WIP version history." },
 ];
 
