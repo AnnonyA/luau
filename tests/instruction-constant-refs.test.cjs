@@ -62,3 +62,24 @@ for (const [name, words] of [
     assert.match(result.diagnostics.map((d) => d.message).join('\n'), new RegExp(`${name}.*constant.*1.*out of range`, 'i'));
   });
 }
+
+test('decoder rejects GETIMPORT D constant index outside the proto constant table', () => {
+  const result = decodeBytes(moduleWithInstruction([adWord(12, 1), 0x40000000]));
+  assert.equal(result.ok, false);
+  assert.equal(result.module, null);
+  assert.match(result.diagnostics.map((d) => d.message).join('\n'), /GETIMPORT.*constant.*1.*out of range/i);
+});
+
+test('decoder rejects GETIMPORT AUX path length zero', () => {
+  const result = decodeBytes(moduleWithInstruction([adWord(12, 0), 0]));
+  assert.equal(result.ok, false);
+  assert.equal(result.module, null);
+  assert.match(result.diagnostics.map((d) => d.message).join('\n'), /GETIMPORT.*path length 0/i);
+});
+
+test('decoder rejects GETIMPORT AUX component outside the proto constant table', () => {
+  const result = decodeBytes(moduleWithInstruction([adWord(12, 0), 0x40100000]));
+  assert.equal(result.ok, false);
+  assert.equal(result.module, null);
+  assert.match(result.diagnostics.map((d) => d.message).join('\n'), /GETIMPORT.*component 0.*constant 1.*out of range/i);
+});
