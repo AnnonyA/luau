@@ -170,6 +170,10 @@ export function decodeBytes(bytes: Uint8Array, limits: DecodeLimits = DEFAULT_LI
       }
     }
 
+    if (!validateConstantReferences(protos, push)) {
+      return { module: null, diagnostics, ok: false };
+    }
+
     if (!validateProtoGraph(protos, limits.maxProtoDepth, push)) {
       return { module: null, diagnostics, ok: false };
     }
@@ -205,6 +209,57 @@ export function decodeBytes(bytes: Uint8Array, limits: DecodeLimits = DEFAULT_LI
     }
     return { module: null, diagnostics, ok: false };
   }
+}
+
+function validateConstantReferences(
+  protos: DecodedProto[],
+  push: (severity: Diagnostic["severity"], stage: string, message: string, extra?: Partial<Diagnostic>) => void,
+): boolean {
+  for (const proto of protos) {
+    for (let constantIndex = 0; constantIndex < proto.constants.length; constantIndex++) {
+      const constant = proto.constants[constantIndex];
+
+      if (constant.tag === "closure" && constant.closureProtoId !== undefined && constant.closureProtoId >= protos.length) {
+        push(
+          "error",
+          "format",
+          `closure constant ${constantIndex} in proto ${proto.id} references proto id ${constant.closureProtoId} out of range (${protos.length} protos)`,
+          { protoId: proto.id },
+        );
+        return false;
+      }
+
+      if (constant.tag === "table" && constant.tableKeys) {
+        for (const key of constant.tableKeys) {
+          if (key >= proto.constants.length) {
+            push(
+              "error",
+              "format",
+              `table constant ${constantIndex} in proto ${proto.id} references constant key ${key} out of range (${proto.constants.length} constants)`,
+              { protoId: proto.id },
+            );
+            return false;
+          }
+        }
+      }
+
+      if (constant.tag === "import" && constant.importIds) {
+        for (const id of constant.importIds) {
+          if (id >= proto.constants.length) {
+            push(
+              "error",
+              "format",
+              `import constant ${constantIndex} in proto ${proto.id} references constant id ${id} out of range (${proto.constants.length} constants)`,
+              { protoId: proto.id },
+            );
+            return false;
+          }
+        }
+      }
+    }
+  }
+
+  return true;
 }
 
 function validateProtoGraph(
@@ -435,15 +490,32 @@ function decodeConstant(
       return { tag: "number", number: r.f64("constant.number") };
     case CONSTANT_TAG.STRING: {
       const sid = r.varUint("constant.string.id");
-      return { tag: "string", string: stringTable[sid - 1] ?? "" };
+      if (sid === 0) {
+        push("error", "decode", `string constant ${index} in proto ${protoId} uses reserved string id 0`, { protoId });
+        throw new Error(`invalid string constant id 0 in proto ${protoId}`);
+      }
+      if (sid > stringTable.length) {
+        push(
+          "error",
+          "decode",
+          `string constant ${index} in proto ${protoId} references string id ${sid} out of range (${stringTable.length} strings)`,
+          { protoId },
+        );
+        throw new Error(`string constant id ${sid} out of range in proto ${protoId}`);
+      }
+      return { tag: "string", string: stringTable[sid - 1] };
     }
     case CONSTANT_TAG.IMPORT: {
       const packed = r.u32("constant.import.id");
       const count = (packed >>> 30) & 0x3;
+      if (count === 0) {
+        push("error", "decode", `import constant ${index} in proto ${protoId} has invalid path length 0`, { protoId });
+        throw new Error(`invalid import path length 0 in proto ${protoId}`);
+      }
       const id0 = (packed >>> 20) & 0x3ff;
       const id1 = (packed >>> 10) & 0x3ff;
       const id2 = packed & 0x3ff;
-      const ids = [id0, id1, id2].slice(0, Math.max(1, count));
+      const ids = [id0, id1, id2].slice(0, count);
       return { tag: "import", importIds: ids, raw: packed };
     }
     case CONSTANT_TAG.TABLE: {

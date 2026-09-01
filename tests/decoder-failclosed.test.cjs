@@ -134,3 +134,96 @@ test("decoder accepts a proto chain exactly at maxProtoDepth", () => {
   assert.equal(result.ok, true);
   assert.notEqual(result.module, null);
 });
+
+function encodeAsciiString(value) {
+  const bytes = Array.from(Buffer.from(value, "utf8"));
+  return [...varUint(bytes.length), ...bytes];
+}
+
+function protoWithConstants(constants) {
+  return [
+    1, 0, 0, 0,
+    0,
+    ...varUint(0),
+    ...varUint(0),
+    ...varUint(constants.length),
+    ...constants.flat(),
+    ...varUint(0),
+    ...varUint(0),
+    ...varUint(0),
+    0,
+    ...varUint(0),
+    ...varUint(0),
+  ];
+}
+
+function moduleWithConstants(constants, strings = []) {
+  return Uint8Array.from([
+    4, 1,
+    ...varUint(strings.length),
+    ...strings.flatMap(encodeAsciiString),
+    ...varUint(1),
+    ...protoWithConstants(constants),
+    ...varUint(0),
+  ]);
+}
+
+function constantString(stringId) {
+  return [3, ...varUint(stringId)];
+}
+
+function constantClosure(protoId) {
+  return [6, ...varUint(protoId)];
+}
+
+function constantTable(keys) {
+  return [5, ...varUint(keys.length), ...keys.flatMap(varUint)];
+}
+
+function constantImport(count, ids) {
+  const [id0 = 0, id1 = 0, id2 = 0] = ids;
+  const packed = (((count & 3) << 30) | ((id0 & 0x3ff) << 20) | ((id1 & 0x3ff) << 10) | (id2 & 0x3ff)) >>> 0;
+  return [4, ...u32le(packed)];
+}
+
+test("decoder rejects string constants with the reserved zero string id", () => {
+  const result = decodeBytes(moduleWithConstants([constantString(0)], ["ok"]));
+  assert.equal(result.ok, false);
+  assert.equal(result.module, null);
+  assert.match(result.diagnostics.map((d) => d.message).join("\n"), /string constant.*id 0/i);
+});
+
+test("decoder rejects string constants outside the string table", () => {
+  const result = decodeBytes(moduleWithConstants([constantString(2)], ["only"]));
+  assert.equal(result.ok, false);
+  assert.equal(result.module, null);
+  assert.match(result.diagnostics.map((d) => d.message).join("\n"), /string constant.*id 2.*out of range/i);
+});
+
+test("decoder rejects closure constants outside the module proto table", () => {
+  const result = decodeBytes(moduleWithConstants([constantClosure(1)]));
+  assert.equal(result.ok, false);
+  assert.equal(result.module, null);
+  assert.match(result.diagnostics.map((d) => d.message).join("\n"), /closure constant.*proto id 1.*out of range/i);
+});
+
+test("decoder rejects table constants with out-of-range constant keys", () => {
+  const result = decodeBytes(moduleWithConstants([constantTable([1])]));
+  assert.equal(result.ok, false);
+  assert.equal(result.module, null);
+  assert.match(result.diagnostics.map((d) => d.message).join("\n"), /table constant.*key 1.*out of range/i);
+});
+
+test("decoder rejects import constants with out-of-range constant ids", () => {
+  const result = decodeBytes(moduleWithConstants([constantImport(1, [1])]));
+  assert.equal(result.ok, false);
+  assert.equal(result.module, null);
+  assert.match(result.diagnostics.map((d) => d.message).join("\n"), /import constant.*id 1.*out of range/i);
+});
+
+test("decoder rejects import constants with a zero-length path", () => {
+  const result = decodeBytes(moduleWithConstants([constantImport(0, [0])]));
+  assert.equal(result.ok, false);
+  assert.equal(result.module, null);
+  assert.match(result.diagnostics.map((d) => d.message).join("\n"), /import constant.*path length 0/i);
+});
