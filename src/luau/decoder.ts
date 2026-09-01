@@ -174,6 +174,10 @@ export function decodeBytes(bytes: Uint8Array, limits: DecodeLimits = DEFAULT_LI
       return { module: null, diagnostics, ok: false };
     }
 
+    if (!validateInstructionConstantReferences(protos, push)) {
+      return { module: null, diagnostics, ok: false };
+    }
+
     if (!validateProtoGraph(protos, limits.maxProtoDepth, push)) {
       return { module: null, diagnostics, ok: false };
     }
@@ -255,6 +259,31 @@ function validateConstantReferences(
             return false;
           }
         }
+      }
+    }
+  }
+
+  return true;
+}
+
+function validateInstructionConstantReferences(
+  protos: DecodedProto[],
+  push: (severity: Diagnostic["severity"], stage: string, message: string, extra?: Partial<Diagnostic>) => void,
+): boolean {
+  for (const proto of protos) {
+    for (const ins of proto.instructions) {
+      let constantIndex: number | undefined;
+      if (ins.opname === "LOADK" || ins.opname === "DUPTABLE") constantIndex = ins.D;
+      else if (ins.opname === "LOADKX") constantIndex = ins.aux;
+
+      if (constantIndex !== undefined && (constantIndex < 0 || constantIndex >= proto.constants.length)) {
+        push(
+          "error",
+          "format",
+          `${ins.opname} at pc ${ins.pc} in proto ${proto.id} references constant ${constantIndex} out of range (${proto.constants.length} constants)`,
+          { protoId: proto.id, pc: ins.pc },
+        );
+        return false;
       }
     }
   }
