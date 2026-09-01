@@ -273,7 +273,7 @@ function validateInstructionConstantReferences(
   for (const proto of protos) {
     for (const ins of proto.instructions) {
       let constantIndex: number | undefined;
-      if (ins.opname === "LOADK" || ins.opname === "DUPTABLE") constantIndex = ins.D;
+      if (ins.opname === "LOADK" || ins.opname === "DUPTABLE" || ins.opname === "GETIMPORT") constantIndex = ins.D;
       else if (
         ins.opname === "LOADKX" ||
         ins.opname === "GETGLOBAL" ||
@@ -292,6 +292,33 @@ function validateInstructionConstantReferences(
           { protoId: proto.id, pc: ins.pc },
         );
         return false;
+      }
+
+      if (ins.opname === "GETIMPORT") {
+        if (ins.aux === undefined) {
+          push("error", "format", `GETIMPORT at pc ${ins.pc} in proto ${proto.id} is missing its AUX import path`, { protoId: proto.id, pc: ins.pc });
+          return false;
+        }
+
+        const count = ins.aux >>> 30;
+        if (count === 0) {
+          push("error", "format", `GETIMPORT at pc ${ins.pc} in proto ${proto.id} has invalid import path length 0`, { protoId: proto.id, pc: ins.pc });
+          return false;
+        }
+
+        const componentIds = [(ins.aux >>> 20) & 0x3ff, (ins.aux >>> 10) & 0x3ff, ins.aux & 0x3ff];
+        for (let component = 0; component < count; component++) {
+          const componentId = componentIds[component];
+          if (componentId >= proto.constants.length) {
+            push(
+              "error",
+              "format",
+              `GETIMPORT at pc ${ins.pc} in proto ${proto.id} import path component ${component} references constant ${componentId} out of range (${proto.constants.length} constants)`,
+              { protoId: proto.id, pc: ins.pc },
+            );
+            return false;
+          }
+        }
       }
     }
   }
