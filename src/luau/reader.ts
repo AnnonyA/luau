@@ -83,8 +83,11 @@ export class Reader {
     let shift = 0;
     for (let i = 0; i < 5; i++) {
       const b = this.u8(where);
-      result |= (b & 0x7f) << shift;
-      if ((b & 0x80) === 0) return result >>> 0;
+      if (i === 4 && (b & 0xf0) !== 0) {
+        throw new Error(`varUint at ${where} exceeded 32 bits (32-bit overflow)`);
+      }
+      result += (b & 0x7f) * 2 ** shift;
+      if ((b & 0x80) === 0) return result;
       shift += 7;
     }
     throw new Error(`varUint at ${where} exceeded 5 bytes (32-bit overflow)`);
