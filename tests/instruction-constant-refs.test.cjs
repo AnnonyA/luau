@@ -130,3 +130,15 @@ for (const [name, opcode] of [
     assert.notEqual(result.module, null);
   });
 }
+
+for (const [name, opcode] of [
+  ['JUMPXEQKN', 79],
+  ['JUMPXEQKS', 80],
+]) {
+  test(`decoder rejects ${name} low-24-bit constant index outside the proto constant table while ignoring NOT flag`, () => {
+    const result = decodeBytes(moduleWithInstruction([adWord(opcode, 0), 0x80000001]));
+    assert.equal(result.ok, false);
+    assert.equal(result.module, null);
+    assert.match(result.diagnostics.map((d) => d.message).join('\n'), new RegExp(`${name}.*constant.*1.*out of range`, 'i'));
+  });
+}
