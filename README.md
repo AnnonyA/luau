@@ -17,6 +17,7 @@ The repository currently includes:
 - name recovery helpers
 - Luau source printing
 - a small browser UI for inspecting decompilation results
+- a controlled bytecode fixture encoder for regression testing
 
 ## Development status
 
@@ -27,7 +28,7 @@ Input bytecode is treated as untrusted data and must not be executed by the deco
 ## Development
 
 ```bash
-npm ci
+npm install
 npm run dev
 ```
 
