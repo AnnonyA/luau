@@ -274,7 +274,15 @@ function validateInstructionConstantReferences(
     for (const ins of proto.instructions) {
       let constantIndex: number | undefined;
       if (ins.opname === "LOADK" || ins.opname === "DUPTABLE") constantIndex = ins.D;
-      else if (ins.opname === "LOADKX") constantIndex = ins.aux;
+      else if (
+        ins.opname === "LOADKX" ||
+        ins.opname === "GETGLOBAL" ||
+        ins.opname === "SETGLOBAL" ||
+        ins.opname === "GETTABLEKS" ||
+        ins.opname === "SETTABLEKS" ||
+        ins.opname === "NAMECALL" ||
+        ins.opname === "FASTCALL2K"
+      ) constantIndex = ins.aux;
 
       if (constantIndex !== undefined && (constantIndex < 0 || constantIndex >= proto.constants.length)) {
         push(
