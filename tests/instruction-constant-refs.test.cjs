@@ -22,9 +22,13 @@ function adWord(op, d, a = 0) {
   return (op | (a << 8) | ((d & 0xffff) << 16)) >>> 0;
 }
 
-function moduleWithInstruction(words) {
+function abcWord(op, a = 0, b = 0, c = 0) {
+  return (op | (a << 8) | (b << 16) | (c << 24)) >>> 0;
+}
+
+function moduleWithInstruction(words, version = 4) {
   return Uint8Array.from([
-    4, 1,
+    version, 1,
     ...varUint(0),
     ...varUint(1),
     1, 0, 0, 0,
@@ -83,3 +87,34 @@ test('decoder rejects GETIMPORT AUX component outside the proto constant table',
   assert.equal(result.module, null);
   assert.match(result.diagnostics.map((d) => d.message).join('\n'), /GETIMPORT.*component 0.*constant 1.*out of range/i);
 });
+
+for (const [name, opcode] of [
+  ['ADDK', 39],
+  ['SUBK', 40],
+  ['MULK', 41],
+  ['DIVK', 42],
+  ['MODK', 43],
+  ['POWK', 44],
+  ['ANDK', 47],
+  ['ORK', 48],
+  ['IDIVK', 82],
+]) {
+  test(`decoder rejects ${name} C constant index outside the proto constant table`, () => {
+    const result = decodeBytes(moduleWithInstruction([abcWord(opcode, 0, 0, 1)]));
+    assert.equal(result.ok, false);
+    assert.equal(result.module, null);
+    assert.match(result.diagnostics.map((d) => d.message).join('\n'), new RegExp(`${name}.*constant.*1.*out of range`, 'i'));
+  });
+}
+
+for (const [name, opcode] of [
+  ['SUBRK', 71],
+  ['DIVRK', 72],
+]) {
+  test(`decoder rejects ${name} B constant index outside the proto constant table`, () => {
+    const result = decodeBytes(moduleWithInstruction([abcWord(opcode, 0, 1, 0)], 5));
+    assert.equal(result.ok, false);
+    assert.equal(result.module, null);
+    assert.match(result.diagnostics.map((d) => d.message).join('\n'), new RegExp(`${name}.*constant.*1.*out of range`, 'i'));
+  });
+}
