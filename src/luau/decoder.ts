@@ -275,6 +275,18 @@ function validateInstructionConstantReferences(
       let constantIndex: number | undefined;
       if (ins.opname === "LOADK" || ins.opname === "DUPTABLE" || ins.opname === "GETIMPORT") constantIndex = ins.D;
       else if (
+        ins.opname === "ADDK" ||
+        ins.opname === "SUBK" ||
+        ins.opname === "MULK" ||
+        ins.opname === "DIVK" ||
+        ins.opname === "MODK" ||
+        ins.opname === "POWK" ||
+        ins.opname === "ANDK" ||
+        ins.opname === "ORK" ||
+        ins.opname === "IDIVK"
+      ) constantIndex = ins.C;
+      else if (ins.opname === "SUBRK" || ins.opname === "DIVRK") constantIndex = ins.B;
+      else if (
         ins.opname === "LOADKX" ||
         ins.opname === "GETGLOBAL" ||
         ins.opname === "SETGLOBAL" ||
