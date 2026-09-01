@@ -86,3 +86,51 @@ test("decoder rejects child proto ids outside the module proto table", () => {
   assert.equal(result.module, null);
   assert.match(result.diagnostics.map((d) => d.message).join("\n"), /child proto id 1.*out of range/i);
 });
+
+function moduleWithProtoGraph(childLists, mainProtoId = 0) {
+  return Uint8Array.from([
+    4, 1,
+    ...varUint(0),
+    ...varUint(childLists.length),
+    ...childLists.flatMap((children) => minimalProto(children)),
+    ...varUint(mainProtoId),
+  ]);
+}
+
+test("decoder rejects cycles in the proto graph", () => {
+  const result = decodeBytes(moduleWithProtoGraph([[0]]));
+  assert.equal(result.ok, false);
+  assert.equal(result.module, null);
+  assert.match(result.diagnostics.map((d) => d.message).join("\n"), /proto graph cycle/i);
+});
+
+test("decoder enforces maxProtoDepth across child proto chains", () => {
+  const limits = {
+    maxInputBytes: 1024 * 1024,
+    maxProtos: 16,
+    maxInstructionsPerProto: 16,
+    maxConstantsPerProto: 16,
+    maxStringTableEntries: 16,
+    maxProtoDepth: 2,
+    maxAnalysisIterations: 100,
+  };
+  const result = decodeBytes(moduleWithProtoGraph([[1], [2], []]), limits);
+  assert.equal(result.ok, false);
+  assert.equal(result.module, null);
+  assert.match(result.diagnostics.map((d) => d.message).join("\n"), /proto depth 3.*limit 2/i);
+});
+
+test("decoder accepts a proto chain exactly at maxProtoDepth", () => {
+  const limits = {
+    maxInputBytes: 1024 * 1024,
+    maxProtos: 16,
+    maxInstructionsPerProto: 16,
+    maxConstantsPerProto: 16,
+    maxStringTableEntries: 16,
+    maxProtoDepth: 2,
+    maxAnalysisIterations: 100,
+  };
+  const result = decodeBytes(moduleWithProtoGraph([[1], []]), limits);
+  assert.equal(result.ok, true);
+  assert.notEqual(result.module, null);
+});
