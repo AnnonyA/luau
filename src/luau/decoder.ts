@@ -82,10 +82,12 @@ export function decodeBytes(bytes: Uint8Array, limits: DecodeLimits = DEFAULT_LI
   try {
     const version = r.u8("header.version");
     if (version === 0) {
+      // version 0 is the "compile failed" sentinel: an error string follows.
       let message = "<unreadable>";
       try {
         message = r.string("header.errorMessage");
       } catch {
+        /* best effort */
       }
       push("error", "format", `input is a compiler error payload, not bytecode: ${message}`);
       return { module: null, diagnostics, ok: false };
@@ -113,11 +115,16 @@ export function decodeBytes(bytes: Uint8Array, limits: DecodeLimits = DEFAULT_LI
       typesVersion = r.u8("header.typesVersion");
     }
 
+    // ---- global string table ----
     const stringCount = r.varUint("stringtable.count");
     if (stringCount > limits.maxStringTableEntries) throw new LimitExceededError("string table entries", stringCount, limits.maxStringTableEntries);
     const stringTable: string[] = new Array(stringCount);
     for (let i = 0; i < stringCount; i++) stringTable[i] = r.string("stringtable.entry");
 
+    // ---- optional userdata type name remapping table (typesVersion >= 3) ----
+    // Best-effort: gated defensively; failure here is reported but does not
+    // necessarily invalidate the whole module since we re-validate global
+    // stream consumption at the very end.
     if (version >= 5 && typesVersion !== null && typesVersion >= 3) {
       try {
         let index = r.u8("userdataRemap.index");
@@ -149,6 +156,20 @@ export function decodeBytes(bytes: Uint8Array, limits: DecodeLimits = DEFAULT_LI
       return { module: null, diagnostics, ok: false };
     }
 
+    for (const proto of protos) {
+      for (const childProtoId of proto.childProtoIds) {
+        if (childProtoId >= protos.length) {
+          push(
+            "error",
+            "format",
+            `child proto id ${childProtoId} in proto ${proto.id} out of range (${protos.length} protos)`,
+            { protoId: proto.id },
+          );
+          return { module: null, diagnostics, ok: false };
+        }
+      }
+    }
+
     const consumedBytes = r.pos;
     if (consumedBytes !== bytes.length) {
       push(
@@ -158,6 +179,8 @@ export function decodeBytes(bytes: Uint8Array, limits: DecodeLimits = DEFAULT_LI
       );
     }
 
+    // resolve import constant paths now that every proto's constants (and
+    // upstream string table) are available
     for (const p of protos) resolveImportPaths(p);
 
     const module: DecodedModule = {
@@ -215,6 +238,9 @@ function decodeProto(
     const spec = OPCODE_BY_ID.get(base.op);
     if (base.op > MAX_KNOWN_OPCODE || !spec) {
       push("error", "decode", `unknown opcode ${base.op} at word ${i} in proto ${protoId}; cannot safely continue decoding this proto's instruction stream`, { protoId, pc: i });
+      // Stop decoding instructions for this proto rather than risk
+      // misinterpreting AUX word boundaries (which would desynchronize
+      // everything after it).
       break;
     }
     if (spec.deprecated && spec.removedInVersion !== undefined && version >= spec.removedInVersion) {
