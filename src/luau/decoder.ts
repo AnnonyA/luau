@@ -286,6 +286,8 @@ function validateInstructionConstantReferences(
         ins.opname === "IDIVK"
       ) constantIndex = ins.C;
       else if (ins.opname === "SUBRK" || ins.opname === "DIVRK") constantIndex = ins.B;
+      else if (ins.opname === "JUMPXEQKN" || ins.opname === "JUMPXEQKS")
+        constantIndex = ins.aux === undefined ? undefined : ins.aux & 0x00ffffff;
       else if (
         ins.opname === "LOADKX" ||
         ins.opname === "GETGLOBAL" ||
