@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .vite/
+.test-build/
 *.log
 .DS_Store
 Thumbs.db
