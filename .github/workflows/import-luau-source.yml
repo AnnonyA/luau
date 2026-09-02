@@ -1,0 +1,86 @@
+name: Import verified Luau source
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .source-import-ready
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'source-import'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout staging branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Reconstruct and verify delta archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .source-payload/part-* > "$RUNNER_TEMP/luau-delta.tar.xz.b64"
+          base64 -d "$RUNNER_TEMP/luau-delta.tar.xz.b64" > "$RUNNER_TEMP/luau-delta.tar.xz"
+          echo 'ebe04d73a8c793794bf4cfa0dac2937b2b4ba10e3193c2c49ba2b0e46656cba2  '"$RUNNER_TEMP/luau-delta.tar.xz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/delta"
+          tar -xJf "$RUNNER_TEMP/luau-delta.tar.xz" -C "$RUNNER_TEMP/delta"
+
+      - name: Rebuild exact uploaded source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth=1 https://github.com/AZYsGithub/shiny.git "$RUNNER_TEMP/final"
+          rm -rf "$RUNNER_TEMP/final/.git"
+          while IFS= read -r path; do
+            [ -z "$path" ] || rm -rf "$RUNNER_TEMP/final/$path"
+          done < "$RUNNER_TEMP/delta/__removed.txt"
+          rsync -a --exclude='__removed.txt' --exclude='__final_manifest.json' "$RUNNER_TEMP/delta/" "$RUNNER_TEMP/final/"
+
+      - name: Verify every final file
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'final'
+          manifest_path = Path(os.environ['RUNNER_TEMP']) / 'delta' / '__final_manifest.json'
+          expected = json.loads(manifest_path.read_text())
+          actual = {}
+          for p in root.rglob('*'):
+              if p.is_file():
+                  rel = p.relative_to(root).as_posix()
+                  actual[rel] = hashlib.sha256(p.read_bytes()).hexdigest()
+          if actual != expected:
+              missing = sorted(set(expected) - set(actual))
+              extra = sorted(set(actual) - set(expected))
+              bad = sorted(k for k in set(actual) & set(expected) if actual[k] != expected[k])
+              raise SystemExit(f'manifest mismatch: missing={missing} extra={extra} bad={bad}')
+          if len(actual) != 168:
+              raise SystemExit(f'expected 168 files, got {len(actual)}')
+          forbidden = ['Luau.zip', 'luau', '.source-payload', '.source-import-ready', '.import-xz', '.import-xz18', '.import-payload', '.github']
+          for name in forbidden:
+              if (root / name).exists():
+                  raise SystemExit(f'forbidden staging artifact in final tree: {name}')
+          print('Verified exact uploaded source:', len(actual), 'files')
+          PY
+
+      - name: Replace main atomically
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git checkout -B import-main origin/main
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -a "$RUNNER_TEMP/final/." .
+          git add -A
+          git config user.name 'AnnonyA source importer'
+          git config user.email '79977221+AnnonyA@users.noreply.github.com'
+          git commit -m 'chore: replace repository with Luau decompiler source'
+          git push origin HEAD:main
+          echo "Imported commit: $(git rev-parse HEAD)"
