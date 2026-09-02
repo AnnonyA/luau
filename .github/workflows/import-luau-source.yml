@@ -24,9 +24,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat .source-payload-v3/part-* > "$RUNNER_TEMP/luau.zstpatch.b64"
+          cat .source-payload-v5/part-* > "$RUNNER_TEMP/luau.zstpatch.b64"
           base64 -d "$RUNNER_TEMP/luau.zstpatch.b64" > "$RUNNER_TEMP/luau.zstpatch"
-          echo '6afda500fcabe9cecadd761d1ab71f40bf46f4883be466d24fedceba7ca5c304  '"$RUNNER_TEMP/luau.zstpatch" | sha256sum -c -
+          echo 'cde5ce67b16cb1b6c6285c722f040fb5551399783a5e31f2d48ec1bd5f591b92  '"$RUNNER_TEMP/luau.zstpatch" | sha256sum -c -
 
       - name: Rebuild exact uploaded source
         shell: bash
@@ -46,8 +46,9 @@ jobs:
             cd "$RUNNER_TEMP/upstream"
             tar --sort=name --mtime='UTC 2020-01-01' --owner=0 --group=0 --numeric-owner -cf "$RUNNER_TEMP/upstream.tar" .
           )
+          echo '8335a28ba3754a00e2d9757398b79e314a394ac8a708bbfb54f12b86916454cb  '"$RUNNER_TEMP/upstream.tar" | sha256sum -c -
           zstd -q -d --patch-from="$RUNNER_TEMP/upstream.tar" "$RUNNER_TEMP/luau.zstpatch" -o "$RUNNER_TEMP/final.tar"
-          echo 'b6e098982650e2c6e75070e34142727b5f8d012f628b1fc4a2434a72b8d70b7d  '"$RUNNER_TEMP/final.tar" | sha256sum -c -
+          echo '66908a1f21658abed4e5ebd494fca6f05fda11b38577b1cccfb2047095d84964  '"$RUNNER_TEMP/final.tar" | sha256sum -c -
           mkdir -p "$RUNNER_TEMP/final"
           tar -xf "$RUNNER_TEMP/final.tar" -C "$RUNNER_TEMP/final"
 
@@ -64,8 +65,9 @@ jobs:
               raise SystemExit(f'expected 168 files, got {len(files)}')
           forbidden = [
               'Luau.zip', 'luau', '.source-payload', '.source-payload-v2',
-              '.source-payload-v3', '.source-import-ready', '.import-xz',
-              '.import-xz18', '.import-payload', '.github'
+              '.source-payload-v3', '.source-payload-v4', '.source-payload-v5',
+              '.source-import-ready', '.import-xz', '.import-xz18',
+              '.import-payload', '.github'
           ]
           for name in forbidden:
               if (root / name).exists():
