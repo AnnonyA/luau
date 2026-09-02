@@ -20,54 +20,61 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Reconstruct and verify delta archive
+      - name: Reconstruct and verify patch
         shell: bash
         run: |
           set -euo pipefail
-          cat .source-payload-v2/part-* > "$RUNNER_TEMP/luau-delta.tar.xz.b64"
-          base64 -d "$RUNNER_TEMP/luau-delta.tar.xz.b64" > "$RUNNER_TEMP/luau-delta.tar.xz"
-          echo 'f0389eed52ee650176200cd09babad131af9b6d0b4eb58d0c89cbc4200214ccf  '"$RUNNER_TEMP/luau-delta.tar.xz" | sha256sum -c -
-          mkdir -p "$RUNNER_TEMP/delta"
-          tar -xJf "$RUNNER_TEMP/luau-delta.tar.xz" -C "$RUNNER_TEMP/delta"
+          cat .source-payload-v3/part-* > "$RUNNER_TEMP/luau.zstpatch.b64"
+          base64 -d "$RUNNER_TEMP/luau.zstpatch.b64" > "$RUNNER_TEMP/luau.zstpatch"
+          echo '6afda500fcabe9cecadd761d1ab71f40bf46f4883be466d24fedceba7ca5c304  '"$RUNNER_TEMP/luau.zstpatch" | sha256sum -c -
 
       - name: Rebuild exact uploaded source
         shell: bash
         run: |
           set -euo pipefail
-          git clone --depth=1 https://github.com/AZYsGithub/shiny.git "$RUNNER_TEMP/final"
-          rm -rf "$RUNNER_TEMP/final/.git"
-          while IFS= read -r path; do
-            [ -z "$path" ] || rm -rf "$RUNNER_TEMP/final/$path"
-          done < "$RUNNER_TEMP/delta/__removed.txt"
-          rsync -a --exclude='__removed.txt' --exclude='__final_manifest.json' "$RUNNER_TEMP/delta/" "$RUNNER_TEMP/final/"
+          if ! command -v zstd >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y zstd
+          fi
+          mkdir -p "$RUNNER_TEMP/upstream"
+          git -C "$RUNNER_TEMP/upstream" init -q
+          git -C "$RUNNER_TEMP/upstream" remote add origin https://github.com/AZYsGithub/shiny.git
+          git -C "$RUNNER_TEMP/upstream" fetch -q --depth=1 origin b8ec7a1ea410387f853ec6d5136a7bf302942388
+          git -C "$RUNNER_TEMP/upstream" checkout -q FETCH_HEAD
+          rm -rf "$RUNNER_TEMP/upstream/.git"
+          (
+            cd "$RUNNER_TEMP/upstream"
+            tar --sort=name --mtime='UTC 2020-01-01' --owner=0 --group=0 --numeric-owner -cf "$RUNNER_TEMP/upstream.tar" .
+          )
+          zstd -q -d --patch-from="$RUNNER_TEMP/upstream.tar" "$RUNNER_TEMP/luau.zstpatch" -o "$RUNNER_TEMP/final.tar"
+          echo 'b6e098982650e2c6e75070e34142727b5f8d012f628b1fc4a2434a72b8d70b7d  '"$RUNNER_TEMP/final.tar" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/final"
+          tar -xf "$RUNNER_TEMP/final.tar" -C "$RUNNER_TEMP/final"
 
-      - name: Verify every final file
+      - name: Verify final tree shape
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import hashlib, json, os
+          import os
           from pathlib import Path
           root = Path(os.environ['RUNNER_TEMP']) / 'final'
-          manifest_path = Path(os.environ['RUNNER_TEMP']) / 'delta' / '__final_manifest.json'
-          expected = json.loads(manifest_path.read_text())
-          actual = {}
-          for p in root.rglob('*'):
-              if p.is_file():
-                  rel = p.relative_to(root).as_posix()
-                  actual[rel] = hashlib.sha256(p.read_bytes()).hexdigest()
-          if actual != expected:
-              missing = sorted(set(expected) - set(actual))
-              extra = sorted(set(actual) - set(expected))
-              bad = sorted(k for k in set(actual) & set(expected) if actual[k] != expected[k])
-              raise SystemExit(f'manifest mismatch: missing={missing} extra={extra} bad={bad}')
-          if len(actual) != 168:
-              raise SystemExit(f'expected 168 files, got {len(actual)}')
-          forbidden = ['Luau.zip', 'luau', '.source-payload', '.source-payload-v2', '.source-import-ready', '.import-xz', '.import-xz18', '.import-payload', '.github']
+          files = sorted(p.relative_to(root).as_posix() for p in root.rglob('*') if p.is_file())
+          if len(files) != 168:
+              raise SystemExit(f'expected 168 files, got {len(files)}')
+          forbidden = [
+              'Luau.zip', 'luau', '.source-payload', '.source-payload-v2',
+              '.source-payload-v3', '.source-import-ready', '.import-xz',
+              '.import-xz18', '.import-payload', '.github'
+          ]
           for name in forbidden:
               if (root / name).exists():
                   raise SystemExit(f'forbidden staging artifact in final tree: {name}')
-          print('Verified exact uploaded source:', len(actual), 'files')
+          required = ['Cargo.toml', 'ast', 'cfg', 'luau-lifter', 'restructure']
+          for name in required:
+              if not (root / name).exists():
+                  raise SystemExit(f'missing expected source entry: {name}')
+          print('Verified final source tree:', len(files), 'files')
           PY
 
       - name: Replace main atomically
