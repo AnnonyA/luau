@@ -1,0 +1,26 @@
+name: Export upstream source
+
+on:
+  push:
+    branches: [source-import]
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone upstream
+        run: git clone --depth=1 https://github.com/AZYsGithub/shiny.git upstream
+      - name: Remove Git metadata
+        run: rm -rf upstream/.git
+      - name: Archive upstream
+        run: tar -czf upstream-source.tar.gz -C upstream .
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-source
+          path: upstream-source.tar.gz
+          if-no-files-found: error
+          retention-days: 1
