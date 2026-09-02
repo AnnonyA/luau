@@ -24,9 +24,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat .source-payload/part-* > "$RUNNER_TEMP/luau-delta.tar.xz.b64"
+          cat .source-payload-v2/part-* > "$RUNNER_TEMP/luau-delta.tar.xz.b64"
           base64 -d "$RUNNER_TEMP/luau-delta.tar.xz.b64" > "$RUNNER_TEMP/luau-delta.tar.xz"
-          echo 'ebe04d73a8c793794bf4cfa0dac2937b2b4ba10e3193c2c49ba2b0e46656cba2  '"$RUNNER_TEMP/luau-delta.tar.xz" | sha256sum -c -
+          echo 'f0389eed52ee650176200cd09babad131af9b6d0b4eb58d0c89cbc4200214ccf  '"$RUNNER_TEMP/luau-delta.tar.xz" | sha256sum -c -
           mkdir -p "$RUNNER_TEMP/delta"
           tar -xJf "$RUNNER_TEMP/luau-delta.tar.xz" -C "$RUNNER_TEMP/delta"
 
@@ -63,7 +63,7 @@ jobs:
               raise SystemExit(f'manifest mismatch: missing={missing} extra={extra} bad={bad}')
           if len(actual) != 168:
               raise SystemExit(f'expected 168 files, got {len(actual)}')
-          forbidden = ['Luau.zip', 'luau', '.source-payload', '.source-import-ready', '.import-xz', '.import-xz18', '.import-payload', '.github']
+          forbidden = ['Luau.zip', 'luau', '.source-payload', '.source-payload-v2', '.source-import-ready', '.import-xz', '.import-xz18', '.import-payload', '.github']
           for name in forbidden:
               if (root / name).exists():
                   raise SystemExit(f'forbidden staging artifact in final tree: {name}')
